@@ -26,6 +26,9 @@ abstract class RedisWorkerIO(val address: InetSocketAddress, onConnectStatus: Bo
 
   var readyToWrite = false
 
+  var bufferTimes = 0
+  var noBufferTimes = 0
+
   override def preStart() {
     if (tcpWorker != null) {
       tcpWorker ! Close
@@ -150,6 +153,7 @@ abstract class RedisWorkerIO(val address: InetSocketAddress, onConnectStatus: Bo
     val data = onConnectWrite()
 
     if (data.nonEmpty) {
+      bufferTimes += 1
       writeWorker(data ++ bufferWrite.result())
       bufferWrite.clear()
     } else {
@@ -161,6 +165,10 @@ abstract class RedisWorkerIO(val address: InetSocketAddress, onConnectStatus: Bo
     if (bufferWrite.length == 0) {
       readyToWrite = true
     } else {
+      bufferTimes += 1
+      if (bufferTimes % 100000 == 0) {
+        println(s"Buffered $bufferTimes times")
+      }
       writeWorker(bufferWrite.result())
       bufferWrite.clear()
     }
@@ -170,6 +178,10 @@ abstract class RedisWorkerIO(val address: InetSocketAddress, onConnectStatus: Bo
     if (readyToWrite) {
       writeWorker(byteString)
     } else {
+      noBufferTimes += 1
+      if (noBufferTimes % 100000 == 0) {
+        println(s"Sent without buffer $noBufferTimes times")
+      }
       bufferWrite.append(byteString)
     }
   }
