@@ -28,6 +28,7 @@ abstract class RedisWorkerIO(val address: InetSocketAddress, onConnectStatus: Bo
 
   var bufferTimes = 0
   var noBufferTimes = 0
+  var bufferSize = 0
 
   override def preStart() {
     if (tcpWorker != null) {
@@ -166,8 +167,9 @@ abstract class RedisWorkerIO(val address: InetSocketAddress, onConnectStatus: Bo
       readyToWrite = true
     } else {
       bufferTimes += 1
-      if (bufferTimes % 100000 == 0) {
-        println(s"Buffered $bufferTimes times")
+      bufferSize += bufferWrite.length
+      if (bufferTimes % 10000 == 0) {
+        println(s"Buffered $bufferTimes times, avg size ${bufferSize / bufferTimes}")
       }
       writeWorker(bufferWrite.result())
       bufferWrite.clear()
@@ -176,12 +178,13 @@ abstract class RedisWorkerIO(val address: InetSocketAddress, onConnectStatus: Bo
 
   def write(byteString: ByteString) {
     if (readyToWrite) {
+      noBufferTimes += 1
+      if (noBufferTimes % 10000 == 0) {
+        println(s"Sent without buffer $noBufferTimes times")
+        println(bufferWrite.length)
+      }
       writeWorker(byteString)
     } else {
-      noBufferTimes += 1
-      if (noBufferTimes % 100000 == 0) {
-        println(s"Sent without buffer $noBufferTimes times")
-      }
       bufferWrite.append(byteString)
     }
   }
