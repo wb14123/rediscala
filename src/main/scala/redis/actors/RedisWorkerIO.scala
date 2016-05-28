@@ -154,15 +154,14 @@ abstract class RedisWorkerIO(val address: InetSocketAddress, onConnectStatus: Bo
     val data = onConnectWrite()
 
     if (data.nonEmpty) {
-      bufferTimes += 1
-      writeWorker(data ++ bufferWrite.result())
-      bufferWrite.clear()
+      writeWorker(Some(data))
     } else {
       tryWrite()
     }
   }
 
   def tryWrite() {
+    /*
     if (bufferWrite.length == 0) {
       readyToWrite = true
     } else {
@@ -171,19 +170,16 @@ abstract class RedisWorkerIO(val address: InetSocketAddress, onConnectStatus: Bo
       if (bufferTimes % 10000 == 0) {
         println(s"Buffered $bufferTimes times, avg size ${bufferSize / bufferTimes}")
       }
-      writeWorker(bufferWrite.result())
-      bufferWrite.clear()
+      writeWorker()
     }
+    */
+    readyToWrite = true
+    writeWorker()
   }
 
   def write(byteString: ByteString) {
     if (readyToWrite) {
-      noBufferTimes += 1
-      if (noBufferTimes % 10000 == 0) {
-        println(s"Sent without buffer $noBufferTimes times")
-        println(bufferWrite.length)
-      }
-      writeWorker(byteString)
+      writeWorker(Some(byteString))
     } else {
       bufferWrite.append(byteString)
     }
@@ -193,10 +189,17 @@ abstract class RedisWorkerIO(val address: InetSocketAddress, onConnectStatus: Bo
 
   def reconnectDuration: FiniteDuration = 2 seconds
 
-  private def writeWorker(byteString: ByteString) {
-    onWriteSent()
-    tcpWorker ! Write(byteString, WriteAck)
-    readyToWrite = false
+  private def writeWorker(byteString: Option[ByteString] = None) {
+    // println(s"length: ${bufferWrite.length}")
+    if (byteString.isDefined) {
+      bufferWrite.append(byteString.get)
+    }
+    if (bufferWrite.length > 10000) {
+      onWriteSent()
+      tcpWorker ! Write(bufferWrite.result(), WriteAck)
+      bufferWrite.clear()
+      readyToWrite = false
+    }
   }
 
 }
